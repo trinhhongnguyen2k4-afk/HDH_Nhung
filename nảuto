@@ -1,0 +1,171 @@
+1. Test Device Driver bằng Terminal
+
+Trước tiên phải chắc driver GPIO của BBB hoạt động.
+
+Xem device driver
+ls /dev
+
+Ví dụ có thể thấy:
+
+/dev/led_driver
+Đọc trạng thái LED
+cat /dev/led_driver
+Bật LED
+echo 1 > /dev/led_driver
+Tắt LED
+echo 0 > /dev/led_driver
+
+Nếu LED ON/OFF được là driver OK ✅
+
+2. Viết chương trình C điều khiển Blink LED
+
+Tạo file:
+
+nano blink_led.c
+
+Code:
+
+#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+int main() {
+
+    int fd;
+    fd = open("/dev/led_driver", O_WRONLY);
+
+    if(fd < 0){
+        printf("Cannot open device\n");
+        return -1;
+    }
+
+    while(1){
+        write(fd, "1", 1);   // LED ON
+        sleep(1);
+
+        write(fd, "0", 1);   // LED OFF
+        sleep(1);
+    }
+
+    close(fd);
+    return 0;
+}
+Compile trên board
+gcc blink_led.c -o blink_led
+Chạy thử
+./blink_led
+
+LED sẽ nhấp nháy 1s ON / 1s OFF.
+
+3. Đóng gói vào Buildroot (tuần 5 yêu cầu)
+
+Tạo package:
+
+cd buildroot/package
+mkdir blink_led
+File Config.in
+config BR2_PACKAGE_BLINK_LED
+    bool "blink_led"
+    help
+        Blink LED using GPIO driver
+File blink_led.mk
+BLINK_LED_VERSION = 1.0
+BLINK_LED_SITE = $(TOPDIR)/../blink_led
+BLINK_LED_SITE_METHOD = local
+
+define BLINK_LED_BUILD_CMDS
+    $(TARGET_CC) $(@D)/blink_led.c -o $(@D)/blink_led
+endef
+
+define BLINK_LED_INSTALL_TARGET_CMDS
+    $(INSTALL) -D -m 0755 $(@D)/blink_led $(TARGET_DIR)/usr/bin/blink_led
+endef
+
+$(eval $(generic-package))
+Thêm vào menuconfig
+make menuconfig
+
+Enable:
+
+Target packages
+    ---> blink_led
+4. Tự chạy khi boot (BusyBox init)
+
+Tạo script:
+
+nano /etc/init.d/S99blink
+
+Nội dung:
+
+#!/bin/sh
+
+echo "Start Blink LED App"
+
+/usr/bin/blink_led &
+Cấp quyền
+chmod +x /etc/init.d/S99blink
+5. Build lại Image
+make
+
+Sau đó ghi image vào SD card.
+
+6. Kết quả khi boot
+
+Khi BBB khởi động:
+
+1️⃣ Linux boot
+2️⃣ BusyBox init chạy script
+3️⃣ blink_led tự chạy
+4️⃣ LED tự nhấp nháy
+
+➡️ Không cần gõ lệnh gì nữa.
+
+7. Kiến trúc hệ thống (để anh hiểu rõ)
+Application (blink_led.c)
+        │
+        │ open/write
+        ▼
+Device Driver
+   /dev/led_driver
+        │
+        ▼
+GPIO Controller
+        │
+        ▼
+LED
+8. Nếu đem nộp báo cáo thầy thường hỏi
+
+Anh nhớ 3 ý này:
+
+1️⃣ cat / echo dùng làm gì
+
+cat → đọc dữ liệu từ device
+
+echo → ghi dữ liệu vào device
+
+2️⃣ tại sao dùng /dev/led_driver
+
+Vì Linux tất cả device đều là file.
+
+3️⃣ tại sao dùng open/write
+
+Application không truy cập GPIO trực tiếp
+→ phải thông qua Device Driver.
+
+💡 Nếu anh muốn em làm thêm cho anh luôn:
+
+code driver LED chuẩn cho BBB
+
+package Buildroot hoàn chỉnh
+
+sơ đồ kiến trúc để đưa vào báo cáo
+
+flow hoạt động để thuyết trình
+
+Em viết hết cho anh luôn cho nộp phát ăn điểm cao nhé. 🚀
+
+a đang ko có bbb thì làm cái này có đc ko\
+
+Được luôn anh 👍 — không có board BeagleBone Black vẫn làm bài này được, chỉ là mình mô phỏng phần device driver thôi. Thầy thường vẫn chấp nhận nếu anh chứng minh được luồng giao tiếp Application ↔ Driver.
+
+Anh có 3 cách làm (em nói từ dễ → chuẩn).
